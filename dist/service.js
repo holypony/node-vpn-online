@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.makeJsonFromCredential = exports.makeJsonFromCredentialAndCloakSettings = exports.getCredential = void 0;
+exports.makeJsonFromCredential = exports.makeJsonFromCredentialAndCloakSettings = exports.getCredentialByCountry = exports.getCredential = void 0;
+const repository_1 = require("./repository");
 const timeForCredBlocking = 660000; // 11 min timeout
 const getCredential = (readyArray, timeoutArray) => {
     if (readyArray.length < 1)
@@ -23,31 +24,33 @@ function backToReadyCredential(readyArr, timeoutArr) {
     readyArr.push(credential);
     timeoutArr.splice(credentialIndex, 1);
 }
-function makeJsonFromCredentialAndCloakSettings(cred, mode, hide = false, gptToken) {
+const getCredentialByCountry = (country, credType) => {
+    const readyArray = credType === 'black' ? repository_1.readyBlackCredentials[country] : repository_1.readyWhiteCredentials[country];
+    const timeoutArray = credType === 'black' ? repository_1.timeoutBlackCredentials[country] : repository_1.timeoutWhiteCredentials[country];
+    return (0, exports.getCredential)(readyArray, timeoutArray);
+};
+exports.getCredentialByCountry = getCredentialByCountry;
+function makeJsonFromCredentialAndCloakSettings(cred, country, credType) {
     const credentialArray = cred.split(":");
-    const credentialJson = JSON.stringify({
-        ip: credentialArray[0],
+    const passwordIndex = credType === 'black' ? 0 : 1;
+    const countryPassword = repository_1.tempPasswordsByCountry[country][passwordIndex];
+    return {
+        host: credentialArray[0],
         port: credentialArray[1],
         login: credentialArray[2],
-        password: credentialArray[3],
-        hide: hide, //to delete isStrickMode on vpn and ads always on if false check referrer
-        mode: mode, // 0 - white 1 - black, 2 - ref
-        gptToken: gptToken,
-    });
-    console.log(credentialJson);
-    return credentialJson;
+        pass: countryPassword || credentialArray[3],
+        mode: repository_1.isHide[0]
+    };
 }
 exports.makeJsonFromCredentialAndCloakSettings = makeJsonFromCredentialAndCloakSettings;
-function makeJsonFromCredential(cred, gptToken) {
+function makeJsonFromCredential(cred) {
     const credentialArray = cred.split(":");
-    const credentialJson = JSON.stringify({
-        ip: credentialArray[0],
+    return {
+        host: credentialArray[0],
         port: credentialArray[1],
         login: credentialArray[2],
-        password: credentialArray[3],
-    });
-    //console.log(credentialJson);
-    return credentialJson;
+        pass: credentialArray[3],
+    };
 }
 exports.makeJsonFromCredential = makeJsonFromCredential;
 //# sourceMappingURL=service.js.map

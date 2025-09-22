@@ -6,7 +6,7 @@ const port = 8080;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use("/octopus2", router);
+app.use("/vpn-online-992", router);
 
 app.get("/", (req, res) => {
   res.send("...");

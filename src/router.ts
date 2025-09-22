@@ -1,118 +1,57 @@
-import { Router } from "express";
+import {Router} from "express";
 import {
-  GetCredentialsArraysLength,
-  WriteNewDataToArray,
   config,
+  countries,
+  Country,
+  GetCredentialsArraysLength,
+  isHide,
   readyBadCredential,
   readyNiceCredential,
   tempPassword,
+  tempPasswordsByCountry,
   timeoutBadCredential,
   timeoutNiceCredential,
-  isHide,
-  readyTaiwanCredential,
-  timeoutTaiwanCredential,
-  readyChicagoCredential,
-  timeoutChicagoCredential,
-  readySingaporeCredential,
-  timeoutSingaporeCredential,
-  readyAmsterdamCredential,
-  timeoutAmsterdamCredential,
-  readyJapanCredential,
-  timeoutJapanCredential,
-  gpt,
+  WriteNewDataToAllCountries,
+  WriteNewDataToArray,
+  WriteNewDataToCountryArray
 } from "./repository";
-import {
-  getCredential,
-  makeJsonFromCredential,
-  makeJsonFromCredentialAndCloakSettings,
-} from "./service";
-import { body, validationResult } from "express-validator";
+import {getCredentialByCountry, makeJsonFromCredentialAndCloakSettings,} from "./service";
+import {body, validationResult} from "express-validator";
 
 export const router = Router();
 router.get("/getcred", (req, res) => {
   console.log("req.query.referrer. ", req.query.referrer);
+  console.log("req.query.country. ", req.query.country);
 
-  const cred = getCredential(readyNiceCredential, timeoutNiceCredential);
-  if (cred === null) {
-    res.json("empty");
-    return;
-  }
+  const country = req.query.country?.toString().toLowerCase() as Country;
+  const referrer = req.query.referrer?.toString();
 
-  if (req.query.referrer) {
-    const stringRef = req.query.referrer.toString();
-    if (stringRef.includes("facebook") || stringRef.includes("instagram")) {
-      const json = makeJsonFromCredentialAndCloakSettings(cred, true, isHide[0], gpt[0]);
-      res.send(json);
-      return;
-    }
-    if (stringRef.includes("premium")) {
-      const json = makeJsonFromCredentialAndCloakSettings(cred, false, isHide[0], gpt[0]);
-      res.send(json);
-      return;
-    }
-    const json = makeJsonFromCredentialAndCloakSettings(cred, false,isHide[0], gpt[0]);
-    res.send(json);
+  // Validate country
+  if (!country || !countries.includes(country)) {
+    res.status(400).json({ error: "Invalid or missing country. Valid countries: " + countries.join(", ") });
     return;
   }
 
-  res.json("empty");
+  // Determine credential type based on referrer
+  const credType: 'black' | 'white' =
+    referrer && (referrer.includes("facebook") || referrer.includes("instagram"))
+      ? 'black'
+      : 'white';
+
+  const cred = getCredentialByCountry(country, credType);
+  if (cred === null) {
+    res.status(404).json({ error: "No credentials available for the specified country and type" });
+    return;
+  }
+
+  const json = makeJsonFromCredentialAndCloakSettings(
+    cred,
+    country,
+    credType
+  );
+  res.json(json);
 });
 
-router.get("/free", (req, res) => {
-  const cred = getCredential(readyBadCredential, timeoutBadCredential);
-  if (cred === null) {
-    res.json("empty");
-    return;
-  }
-  const json = makeJsonFromCredential(cred, gpt[0]);
-
-  res.send(json);
-});
-router.get("/taiwan", (req, res) => {
-  const cred = getCredential(readyTaiwanCredential, timeoutTaiwanCredential);
-  if (cred === null) {
-    res.json("empty");
-    return;
-  }
-  const json = makeJsonFromCredential(cred, gpt[0]);
-  res.send(json);
-});
-router.get("/chicago", (req, res) => {
-  const cred = getCredential(readyChicagoCredential, timeoutChicagoCredential);
-  if (cred === null) {
-    res.json("empty");
-    return;
-  }
-  const json = makeJsonFromCredential(cred, gpt[0]);
-  res.send(json);
-});
-router.get("/singapore", (req, res) => {
-  const cred = getCredential(readySingaporeCredential, timeoutSingaporeCredential);
-  if (cred === null) {
-    res.json("empty");
-    return;
-  }
-  const json = makeJsonFromCredential(cred, gpt[0]);
-  res.send(json);
-});
-router.get("/amsterdam", (req, res) => {
-  const cred = getCredential(readyAmsterdamCredential, timeoutAmsterdamCredential);
-  if (cred === null) {
-    res.json("empty");
-    return;
-  }
-  const json = makeJsonFromCredential(cred, gpt[0]);
-  res.send(json);
-});
-router.get("/japan", (req, res) => {
-  const cred = getCredential(readyJapanCredential, timeoutJapanCredential);
-  if (cred === null) {
-    res.json("empty");
-    return;
-  }
-  const json = makeJsonFromCredential(cred, gpt[0]);
-  res.send(json);
-});
 
 router.post("/setNewBlackPwd", body("tempPwd").isString(), (req, res) => {
   const errors = validationResult(req);
@@ -122,9 +61,27 @@ router.post("/setNewBlackPwd", body("tempPwd").isString(), (req, res) => {
     return;
   }
 
-  tempPassword[0] = req.body.tempPwd;
-  const jsonResponse = JSON.stringify(tempPassword[0]);
-  res.end(jsonResponse);
+  const country = req.query.country?.toString().toLowerCase();
+  const newPassword = req.body.tempPwd;
+
+  if (country === "all") {
+    // Update all countries
+    for (const c of countries) {
+      tempPasswordsByCountry[c][0] = newPassword;
+    }
+    // Also update legacy
+    tempPassword[0] = newPassword;
+    res.json({ message: "Black password updated for all countries", password: newPassword });
+  } else if (country && countries.includes(country as Country)) {
+    // Update specific country
+    tempPasswordsByCountry[country as Country][0] = newPassword;
+    res.json({ message: `Black password updated for ${country}`, password: newPassword });
+  } else {
+    // Legacy behavior
+    tempPassword[0] = newPassword;
+    const jsonResponse = JSON.stringify(tempPassword[0]);
+    res.end(jsonResponse);
+  }
 });
 
 router.post("/setNewWhitePwd", body("tempPwd").isString(), (req, res) => {
@@ -135,9 +92,27 @@ router.post("/setNewWhitePwd", body("tempPwd").isString(), (req, res) => {
     return;
   }
 
-  tempPassword[1] = req.body.tempPwd;
-  const jsonResponse = JSON.stringify(tempPassword[1]);
-  res.end(jsonResponse);
+  const country = req.query.country?.toString().toLowerCase();
+  const newPassword = req.body.tempPwd;
+
+  if (country === "all") {
+    // Update all countries
+    for (const c of countries) {
+      tempPasswordsByCountry[c][1] = newPassword;
+    }
+    // Also update legacy
+    tempPassword[1] = newPassword;
+    res.json({ message: "White password updated for all countries", password: newPassword });
+  } else if (country && countries.includes(country as Country)) {
+    // Update specific country
+    tempPasswordsByCountry[country as Country][1] = newPassword;
+    res.json({ message: `White password updated for ${country}`, password: newPassword });
+  } else {
+    // Legacy behavior
+    tempPassword[1] = newPassword;
+    const jsonResponse = JSON.stringify(tempPassword[1]);
+    res.end(jsonResponse);
+  }
 });
 
 router.put("/setNewMode", body("mode").isString(), (req, res) => {
@@ -182,12 +157,25 @@ router.post(
       return;
     }
 
+    const country = req.query.country?.toString().toLowerCase();
     const arr = StringToArray(req.body.credentials);
-    const lengthOfArray = WriteNewDataToArray(
-      readyBadCredential,
-      timeoutBadCredential,
-      arr
-    );
+    let lengthOfArray = 0;
+
+    if (country === "all--") {
+      lengthOfArray = WriteNewDataToAllCountries('white', arr);
+      // Also update legacy array for backward compatibility
+      WriteNewDataToArray(readyBadCredential, timeoutBadCredential, arr);
+    } else if (country && countries.includes(country as Country)) {
+      lengthOfArray = WriteNewDataToCountryArray(country as Country, 'white', arr);
+      // For countries other than USA and Australia, also set black credentials
+      if (country !== 'usa' && country !== 'australia') {
+        WriteNewDataToCountryArray(country as Country, 'black', arr);
+      }
+    } else {
+      // Legacy behavior - update old array
+      lengthOfArray = WriteNewDataToArray(readyBadCredential, timeoutBadCredential, arr);
+    }
+
     const jsonResponse = JSON.stringify(lengthOfArray);
     res.end(jsonResponse);
   }
@@ -206,12 +194,25 @@ router.post(
       return;
     }
 
+    const country = req.query.country?.toString().toLowerCase();
     const arr = StringToArray(req.body.credentials);
-    const lengthOfArray = WriteNewDataToArray(
-      readyNiceCredential,
-      timeoutNiceCredential,
-      arr
-    );
+    let lengthOfArray = 0;
+
+    if (country === "all--") {
+      lengthOfArray = WriteNewDataToAllCountries('black', arr);
+      // Also update legacy array for backward compatibility
+      WriteNewDataToArray(readyNiceCredential, timeoutNiceCredential, arr);
+    } else if (country && countries.includes(country as Country)) {
+      lengthOfArray = WriteNewDataToCountryArray(country as Country, 'black', arr);
+      // For countries other than USA and Australia, also set white credentials
+      if (country !== 'usa' && country !== 'australia') {
+        WriteNewDataToCountryArray(country as Country, 'white', arr);
+      }
+    } else {
+      // Legacy behavior - update old array
+      lengthOfArray = WriteNewDataToArray(readyNiceCredential, timeoutNiceCredential, arr);
+    }
+
     const jsonResponse = JSON.stringify(lengthOfArray);
     res.end(jsonResponse);
   }
@@ -223,86 +224,8 @@ router.get("/getIosArraysLength", async (req, res) => {
   res.end(jsonResponse);
 });
 
-router.post(
-  "/setCredentialsByCountry",
-  body("credentials").isString(),
-  async (req, res) => {
-    res.setHeader("Content-Type", "application/json");
 
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      res.json({ errors: errors.array() });
-      return;
-    }
 
-    const country = req.query.country?.toString().toLowerCase();
-    const arr = StringToArray(req.body.credentials);
-    let lengthOfArray = 0;
-
-    switch (country) {
-      case "taiwan":
-        lengthOfArray = WriteNewDataToArray(
-          readyTaiwanCredential,
-          timeoutTaiwanCredential,
-          arr
-        );
-        break;
-      case "chicago":
-        lengthOfArray = WriteNewDataToArray(
-          readyChicagoCredential,
-          timeoutChicagoCredential,
-          arr
-        );
-        break;
-      case "singapore":
-        lengthOfArray = WriteNewDataToArray(
-          readySingaporeCredential,
-          timeoutSingaporeCredential,
-          arr
-        );
-        break;
-      case "amsterdam":
-        lengthOfArray = WriteNewDataToArray(
-          readyAmsterdamCredential,
-          timeoutAmsterdamCredential,
-          arr
-        );
-        break;
-      case "japan":
-        lengthOfArray = WriteNewDataToArray(
-          readyJapanCredential,
-          timeoutJapanCredential,
-          arr
-        );
-        break;
-      default:
-        res.status(400).json({ error: "Invalid country specified" });
-        return;
-    }
-
-    const jsonResponse = JSON.stringify(lengthOfArray);
-    res.end(jsonResponse);
-  }
-);
-
-router.post(
-  "/gptToken",
-  body("gptToken").isString(),
-  async (req, res) => {
-    res.setHeader("Content-Type", "application/json");
-
-    const errors = validationResult(req);
-
-    if (!errors.isEmpty()) {
-      res.json({ errors: errors.array() });
-      return;
-    }
-
-    gpt[0] = req.body.gptToken;
-    const jsonResponse = JSON.stringify(gpt[0]);
-    res.end(jsonResponse);
-  }
-);
 
 function StringToArray(s: string): string[] {
   const credentialsArray = s.split(" ");

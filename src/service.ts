@@ -1,4 +1,12 @@
-import { tempPassword } from "./repository";
+import {
+  Country,
+  readyBlackCredentials,
+  timeoutBlackCredentials,
+  readyWhiteCredentials,
+  timeoutWhiteCredentials,
+  tempPasswordsByCountry,
+  isHide
+} from "./repository";
 
 const timeForCredBlocking = 660000; // 11 min timeout
 
@@ -27,34 +35,38 @@ function backToReadyCredential(readyArr: string[], timeoutArr: string[]) {
   timeoutArr.splice(credentialIndex, 1);
 }
 
+export const getCredentialByCountry = (country: Country, credType: 'black' | 'white') => {
+  const readyArray = credType === 'black' ? readyBlackCredentials[country] : readyWhiteCredentials[country];
+  const timeoutArray = credType === 'black' ? timeoutBlackCredentials[country] : timeoutWhiteCredentials[country];
+
+  return getCredential(readyArray, timeoutArray);
+};
+
 export function makeJsonFromCredentialAndCloakSettings(
   cred: string,
-  mode: boolean,
-  hide: boolean = false,
-  gptToken
+  country: Country,
+  credType: 'black' | 'white'
 ) {
   const credentialArray = cred.split(":");
-  const credentialJson = JSON.stringify({
-    ip: credentialArray[0],
+  const passwordIndex = credType === 'black' ? 0 : 1;
+  const countryPassword = tempPasswordsByCountry[country][passwordIndex];
+
+  return {
+    host: credentialArray[0],
     port: credentialArray[1],
     login: credentialArray[2],
-    password: credentialArray[3],
-    hide: hide, //to delete isStrickMode on vpn and ads always on if false check referrer
-    mode: mode, // 0 - white 1 - black, 2 - ref
-    gptToken: gptToken,
-  });
-  console.log(credentialJson);
-  return credentialJson;
+    pass: countryPassword || credentialArray[3],
+    mode: isHide[0]
+  };
 }
 
-export function makeJsonFromCredential(cred: string, gptToken: string) {
+export function makeJsonFromCredential(cred: string) {
   const credentialArray = cred.split(":");
-  const credentialJson = JSON.stringify({
-    ip: credentialArray[0],
+  return {
+    host: credentialArray[0],
     port: credentialArray[1],
     login: credentialArray[2],
-    password: credentialArray[3],
-  });
-  //console.log(credentialJson);
-  return credentialJson;
+    pass: credentialArray[3],
+
+  };
 }
